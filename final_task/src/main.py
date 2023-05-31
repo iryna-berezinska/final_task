@@ -8,28 +8,19 @@ from urllib3 import disable_warnings
 
 app = FastAPI()
 
-from elasticsearch import Elasticsearch
-from ssl import create_default_context, Purpose
+# Відключити перевірку сертифікатів SSL
+disable_warnings()
 
-# SHA-256 відбиток сертифіката
-cert_fingerprint = "52b245a617a4521c107bd7573a5fbb1c707cc29b2549e1a634a2a643199db282"
+# Створити сеанс Requests з підтримкою SSL
+session = Session()
+session.verify = False
 
-# Створити контекст SSL з відповідними параметрами
-ssl_context = create_default_context()
-ssl_context.load_verify_locations(cafile="/Desktop/final_task/final_task/ca.crt")
-ssl_context.verify_mode = Purpose.SERVER_AUTH
-ssl_context.check_hostname = True
-ssl_context.verify_flags = ssl.CERT_REQUIRED
-ssl_context.check_trusted = lambda conn, cert: cert.digest("sha256") == cert_fingerprint
-
-# Підключення до Elasticsearch з перевіркою сертифікатів
+# Підключитися до Elasticsearch через HTTPS
 es = Elasticsearch(
     ['https://localhost:9200'],
-    http_auth=('elastic', 'Q0cdY8kIjzdWxL_Zqcii'),
-    scheme='https',
-    ssl_context=ssl_context
+    basic_auth=('elastic', 'Qb+0WZ*a5JWiEdj3U6V_'),
+    verify_certs=False
 )
-
 
 # Видалити індекс "cve"
 index_name = 'cve'
@@ -48,12 +39,13 @@ index_body = {
 es.indices.create(index=index_name, body=index_body)
 
 def fetch_cve_data():
-    url = "https://services.nvd.nist.gov/rest/json/cves/1.0"
+    url = "https://services.nvd.nist.gov/rest/json/cves/2.0"
     cpe_description = "cpe:/o:linux:linux_kernel"
     params = {
         'cpeMatchString': cpe_description,
-        'pubStartDate': (datetime.now() - timedelta(days=5)).strftime("%Y-%m-%dT%H:%M:%S:000 UTC-00:00"),
-        'pubEndDate': datetime.now().strftime("%Y-%m-%dT%H:%M:%S:000 UTC-00:00")
+        'pubStartDate': (datetime.now() - timedelta(days=5)).strftime("%Y-%m-%dT%H:%M:%S.000 UTC-00:00"),
+        'pubEndDate': datetime.now().strftime("%Y-%m-%dT%H:%M:%S.000 UTC-00:00")
+
     }
     response = requests.get(url, params=params, verify=False)
     if response.status_code == 200:
