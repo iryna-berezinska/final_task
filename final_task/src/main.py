@@ -8,6 +8,7 @@ from urllib3 import disable_warnings
 
 app = FastAPI()
 
+
 # Відключити перевірку сертифікатів SSL
 disable_warnings()
 
@@ -17,8 +18,9 @@ session.verify = False
 
 # Підключитися до Elasticsearch через HTTPS
 es = Elasticsearch(
+
     ['https://localhost:9200'],
-    basic_auth=('elastic', 'Qb+0WZ*a5JWiEdj3U6V_'),
+    http_auth=('elastic', 'Qb+0WZ*a5JWiEdj3U6V_'),
     verify_certs=False
 )
 
@@ -30,26 +32,28 @@ es.indices.delete(index=index_name, ignore=[400, 404])
 index_body = {
     'mappings': {
         'properties': {
-            'description': {'type': 'text'},
-            'date_published': {'type': 'date'},
-            'severity': {'type': 'keyword'}
-        }
+        'description': {'type': 'text'},
+        'date_published': {'type': 'date'},
+        'severity': {'type': 'keyword'}
+       }
     }
 }
 es.indices.create(index=index_name, body=index_body)
 
 def fetch_cve_data():
-    url = "https://services.nvd.nist.gov/rest/json/cves/2.0"
-    cpe_description = "cpe:/o:linux:linux_kernel"
+    url = "https://services.nvd.nist.gov/rest/json/cves/1.0?keyword={query}"
+    cpe_description = "cpe:*"
     params = {
         'cpeMatchString': cpe_description,
-        'pubStartDate': (datetime.now() - timedelta(days=5)).strftime("%Y-%m-%dT%H:%M:%S.000 UTC-00:00"),
-        'pubEndDate': datetime.now().strftime("%Y-%m-%dT%H:%M:%S.000 UTC-00:00")
-
+        'pubStartDate': (datetime.now() - timedelta(days=5)).strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+        'pubEndDate': datetime.now().strftime("%Y-%m-%dT%H:%M:%S.000Z")
     }
-    response = requests.get(url, params=params, verify=False)
+    
+
+    response = session.get(url, params=params)
     if response.status_code == 200:
         cve_data = response.json()
+        print (response.status_code)
         return cve_data.get('result', {}).get('CVE_Items', [])
     else:
         raise HTTPException(status_code=response.status_code, detail="Failed to fetch CVE data from NVD API")
@@ -74,6 +78,7 @@ def get_all_cve():
     }
     result = es.search(index=index_name, query=search_body['query'], size=search_body['size'])
     cve_list = [hit['_source'] for hit in result['hits']['hits']]
+    #print(cve_list)
     return JSONResponse(content={"cve_list": cve_list})
 
 
@@ -131,6 +136,7 @@ def search_cve(query: str):
 
 @app.get("/save/all")
 def save_all_cve():
+    
     cve_data = fetch_cve_data()
     for cve_item in cve_data:
         cve_doc = {
@@ -144,6 +150,7 @@ def save_all_cve():
 
 @app.get("/save/new")
 def save_newest_cve():
+   
     cve_data = fetch_cve_data()
     for cve_item in cve_data[:10]:
         cve_doc = {
@@ -158,6 +165,7 @@ def save_newest_cve():
 
 @app.get("/save/critical")
 def save_critical_cve():
+    
     cve_data = fetch_cve_data()
     critical_cve = [cve_item for cve_item in cve_data if cve_item['impact']['baseMetricV3']['cvssV3']['baseSeverity'] == "critical"]
     for cve_item in critical_cve[:10]:
@@ -172,6 +180,7 @@ def save_critical_cve():
 
 @app.get("/save")
 def save_search_cve(query: str):
+    
     cve_data = fetch_cve_data()
     matching_cve = [cve_item for cve_item in cve_data if query.lower() in cve_item['cve']['description']['description_data'][0]['value'].lower()]
     for cve_item in matching_cve[:10]:
@@ -186,4 +195,4 @@ def save_search_cve(query: str):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8088)
