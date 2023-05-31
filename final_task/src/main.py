@@ -1,6 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from elasticsearch import Elasticsearch
 from datetime import datetime, timedelta
+import requests
 
 app = FastAPI()
 es = Elasticsearch(['http://localhost:9200'])
@@ -72,6 +73,17 @@ def search_cve(query: str):
     result = es.search(index='cve', body=search_body)
     cve_list = [hit['_source'] for hit in result['hits']['hits']]
     return cve_list
+
+@app.get("/cve")
+def get_cve():
+    url = "https://services.nvd.nist.gov/rest/json/cves/1.0"
+    cpe_description = "cpe:/o:linux:linux_kernel"
+    response = requests.get(url, params={"cpeMatchString": cpe_description})
+    if response.status_code == 200:
+        cve_data = response.json()
+        return cve_data
+    else:
+        raise HTTPException(status_code=response.status_code, detail="Failed to fetch CVE data")
 
 if __name__ == "__main__":
     import uvicorn
